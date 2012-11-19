@@ -8,7 +8,9 @@ import cpw.mods.fml.common.SidedProxy;
 import cpw.mods.fml.common.TickType;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import cpw.mods.fml.common.event.FMLServerStartedEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
+import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 import cpw.mods.fml.common.network.IConnectionHandler;
 import cpw.mods.fml.common.network.ITinyPacketHandler;
 import cpw.mods.fml.common.network.NetworkMod;
@@ -22,6 +24,7 @@ import ic2.common.ContainerElectricMachine;
 import ic2.common.Ic2Items;
 import ic2.common.IHasGui;
 import java.io.*;
+import java.sql.*;
 import java.util.*;
 import java.util.zip.GZIPInputStream;
 import net.minecraftforge.common.Configuration;
@@ -46,7 +49,6 @@ import net.minecraft.src.NBTBase;
 import net.minecraft.src.NBTTagCompound;
 import net.minecraft.src.NetHandler;
 import net.minecraft.src.NetServerHandler;
-import net.minecraft.src.NetworkManager;
 import net.minecraft.src.Packet131MapData;
 import net.minecraft.src.Packet1Login;
 import net.minecraft.src.TileEntity;
@@ -56,16 +58,21 @@ import net.minecraft.src.WorldServer;
 @Mod(
     modid="Wustendorf",
     name="Wustendorf",
-    version="0.1",
+    version="%conf:VERSION%",
     dependencies=""
 )
 @NetworkMod(
     clientSideRequired=true,
     serverSideRequired=false,
     tinyPacketHandler=Wustendorf.PacketHandler.class,
-    versionBounds="[0.1]"
+    versionBounds="%conf:VERSION_BOUNDS%"
 )
 public class Wustendorf implements ITickHandler {
+
+    public Random random = new Random();
+    private Connection masterDB = null;
+    private Map<WorldServer, WustendorfDB> worldDBs = new HashMap<WorldServer, WustendorfDB>();
+    private Map<WorldServer, Boolean> activeInWorld = new HashMap<WorldServer, Boolean>();
 
     public static boolean ranUpdate = false;
     public static final boolean DEBUG = false;
@@ -92,6 +99,18 @@ public class Wustendorf implements ITickHandler {
 
         // Load config file.
         config = new Configuration(event.getSuggestedConfigurationFile());
+
+        File dbFile = new File(event.getModConfigurationDirectory(),
+                               "wustendorf");
+
+        try {
+            Class.forName("org.h2.Driver");
+            masterDB = DriverManager.getConnection("jdbc:h2:" +
+                                                   dbFile.getCanonicalPath());
+
+        } catch (Exception e) {
+            System.out.println("Wustendorf: Unable to initialize database.");
+        }
     }
 
     @Mod.Init
@@ -148,35 +167,26 @@ public class Wustendorf implements ITickHandler {
     }
 
     @Mod.ServerStarting
-    public void onServerStart(FMLServerStartingEvent event) {
-        lightUpdated.clear();
+    public void beforeServerStart(FMLServerStartingEvent event) {
+        event.registerServerCommand(new CommandWustendorf());
     }
 
-    public static void updateLight(World world) {
-        if (lightUpdated.contains(world)) {
-            return;
+    @Mod.ServerStarted
+    public void onServerStart(FMLServerStartedEvent event) {
+        for (WustendorfDB worldDB : worldDBs.values()) {
+            worldDB.close();
         }
+        worldDBs.clear();
+        activeInWorld.clear();
+    }
 
-        int min_x = -(8+14);
-        int max_x = 8+14;
-
-        int min_z = -(8+14);
-        int max_z = 8+14;
-
-        if (!world.checkChunksExist(min_x, 0, min_z,
-                                    max_x, 0, max_z)) {
-            return;
+    @Mod.ServerStopping
+    public void onServerStopping(FMLServerStoppingEvent event) {
+        for (WustendorfDB worldDB : worldDBs.values()) {
+            worldDB.close();
         }
-
-        lightUpdated.add(world);
-
-        for (int x = min_x; x <= max_x; x++) {
-            for (int z = min_z; z <= max_z; z++) {
-                for (int y = 0; y < 256; y++) {
-                    updateLightAt(world, x, y, z);
-                }
-            }
-        }
+        worldDBs.clear();
+        activeInWorld.clear();
     }
 
     public static void updateLightAt(World world, int x, int y, int z) {
@@ -205,29 +215,27 @@ public class Wustendorf implements ITickHandler {
     }
 
     public static boolean inSafeRegion(World world, int x, int z) {
-        if (Math.abs(x) < 4 && Math.abs(z) < 4) {
-            return true;
-        }
-
         return false;
     }
 
     public static boolean inLitRegion(World world, int x, int z) {
-        if (Math.abs(x) < 8 && Math.abs(z) < 8) {
-            return true;
-        }
-
         return false;
     }
 
     public static int overrideBlockLight(World world, int x, int y, int z) {
-        if (inSafeRegion(world, x, z)) {
-            return 15;
-        } else if (inLitRegion(world, x, z)) {
-            return 13;
+        if (!(world instanceof WorldServer)) {
+            return -1;
         }
 
-        return -1;
+        WorldServer ws = (WorldServer) world;
+
+        if (instance.activeInWorld.get(ws) != Boolean.TRUE) {
+            return -1;
+        }
+
+        WustendorfDB worldDB = getWorldDB(ws);
+
+        return worldDB.getRegionLight(x, z);
     }
 
     public static int overrideSkyLight(World world, int x, int y, int z) {
@@ -265,6 +273,10 @@ public class Wustendorf implements ITickHandler {
 
     public static void zot(Entity entity) {
         if (entity.worldObj instanceof WorldServer) {
+            if (instance.activeInWorld.get(entity.worldObj) != Boolean.TRUE) {
+                return;
+            }
+
             // TODO: Check/charge energy.
 
             // Mostly-cosmetic lightning bolt.
@@ -285,12 +297,43 @@ public class Wustendorf implements ITickHandler {
         return null;
     }
 
+    public static int randint(int min, int max) {
+        int values = (max - min) + 1;
+        return instance.random.nextInt(values) - min;
+    }
+
+    public static WustendorfDB getWorldDB(WorldServer world) {
+        WustendorfDB worldDB = instance.worldDBs.get(world);
+        if (worldDB != null) {
+            return worldDB;
+        } else {
+            worldDB = new WustendorfDB(world);
+            instance.worldDBs.put(world, worldDB);
+            return worldDB;
+        }
+    }
+
     public void tickStart(EnumSet<TickType> type, Object... tickData) {
-        assert(tickData[0] instanceof World);
+        if (!(tickData[0] instanceof WorldServer)) {
+            return;
+        }
 
-        World world = (World) tickData[0];
+        WorldServer world = (WorldServer) tickData[0];
+        WustendorfDB worldDB = getWorldDB(world);
+        int markerCount = worldDB.getMarkerCount();
 
-        updateLight(world);
+        activeInWorld.put(world, (markerCount > 0));
+
+        // Tick updates.
+        for (int i=0; i<markerCount; i++) {
+            if (random.nextInt(100) == 0) {
+                int[] coords = worldDB.getMarker(i);
+
+                if (coords.length == 3) {
+                    WustendorfMarker.randomTick(world, coords[0], coords[1], coords[2]);
+                }
+            }
+        }
     }
 
     public void tickEnd(EnumSet<TickType> type, Object... tickData) { }

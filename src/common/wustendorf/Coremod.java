@@ -9,7 +9,8 @@ import java.util.zip.*;
 public class Coremod implements IFMLLoadingPlugin {
     public String[] getLibraryRequestClass() {
         return new String[] {
-            "cpw.mods.fml.relauncher.CoreFMLLibraries"
+            "cpw.mods.fml.relauncher.CoreFMLLibraries",
+            "wustendorf.H2Request"
         };
     }
 
