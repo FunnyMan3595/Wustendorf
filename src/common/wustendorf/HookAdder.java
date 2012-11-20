@@ -29,7 +29,7 @@ public class HookAdder extends AdviceAdapter {
 
 
                 // Ask Wustendorf if it has an override.
-                String world = "up";
+                String world = "%conf:OBF_WORLD%";
                 invokeStatic(Type.getType(wd),
                              new Method("overrideBlockLight",
                                         "(L" + world + ";III)I"));
@@ -46,7 +46,7 @@ public class HookAdder extends AdviceAdapter {
                 */
                 loadThis(); // this
 
-                String entityliving = "jw";
+                String entityliving = "%conf:OBF_ENTITY_LIVING%";
                 invokeStatic(Type.getType(wd),
                              new Method("considerKillingCritter",
                                         "(L" + entityliving + ";)V"));

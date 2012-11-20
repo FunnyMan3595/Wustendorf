@@ -22,11 +22,11 @@ public class HookFinder extends ClassVisitor implements IClassTransformer {
 
         class_table = new HashMap<String, Map<String, Integer>>();
 
-        String world_class = "up";
-        String compute_block_light = "f(IIIIII)I";
+        String world_class = "%conf:OBF_WORLD%";
+        String compute_block_light = "%conf:OBF_COMPUTE_BLOCK_LIGHT%(IIIIII)I";
 
-        String entityliving_class = "jw";
-        String update = "d()V";
+        String entityliving_class = "%conf:OBF_ENTITY_LIVING%";
+        String update = "%conf:OBF_ON_LIVING_UPDATE%()V";
 
         Map<String, Integer> world = new HashMap<String, Integer>();
         world.put(compute_block_light, HookAdder.HOOK_LIGHT_OVERRIDE);
