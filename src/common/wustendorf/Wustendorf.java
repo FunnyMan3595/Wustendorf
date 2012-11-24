@@ -555,7 +555,7 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         }
 
         public void markDirty(World world) {
-            world.markBlocksDirty(x-range, 0, z-range, x+range, 255, z+range);
+            world.markBlockRangeForRenderUpdate(x-range, 0, z-range, x+range, 255, z+range);
         }
 
         public String toString() {
