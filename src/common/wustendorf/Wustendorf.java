@@ -446,7 +446,7 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
                 System.out.println("Got packet on channel " + packet.channel + ":");
                 String data_str = "";
                 for (byte datum : packet.data) {
-                    data_str += datum + ",";
+                    data_str += String.format("%02x ", ((int)datum) & 0xFF);
                 }
                 System.out.println(data_str);
             }
