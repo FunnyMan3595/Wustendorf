@@ -53,6 +53,8 @@ public class House {
         public static final Room DANGEROUS = new Room(false);
         public static final Room NONCONTIGUOUS = new Room(false);
 
+        public Location origin = null;
+
         public Map<Location, BlockType> blocks = new HashMap<Location, BlockType>();
         public Map<Location, Room> connections = new HashMap<Location, Room>();
 
@@ -64,7 +66,7 @@ public class House {
             this.valid = valid;
         }
 
-        public static void reportBlock(String message, long x, long y, long z) {
+        public static void reportBlock(String message, int x, int y, int z) {
             System.out.println("@(" + x + "," + y + "," + z + "): " + message);
         }
 
@@ -76,14 +78,14 @@ public class House {
             Room room = new Room();
 
             World world = start.world;
-            long x = start.x;
-            long y = start.y;
-            long z = start.z;
+            int x = start.x;
+            int y = start.y;
+            int z = start.z;
             BlockType type;
 
             // Descend to the bottom of the first air pocket at or below start.
             boolean found_air = false;
-            long min_y = Math.max(0, y-5);
+            int min_y = Math.max(0, y-5);
             for (y = start.y; y >= 0; y--) {
                 type = BlockType.typeOf(new Location(world, x, y, z));
 
@@ -176,6 +178,9 @@ public class House {
                 }
 
                 // block now contains the ground-level block.
+                if (room.origin == null) {
+                    room.origin = block;
+                }
 
                 if (type.isLadder()) {
                     //reportBlock("Ladder", block);
@@ -469,11 +474,11 @@ public class House {
 
     public static class Location {
         World world;
-        public long x;
-        public long y;
-        public long z;
+        public int x;
+        public int y;
+        public int z;
 
-        public Location(World world, long x, long y, long z) {
+        public Location(World world, int x, int y, int z) {
             this.world = world;
             this.x = x;
             this.y = y;
@@ -497,9 +502,9 @@ public class House {
         }
 
         public Location step(int dir) {
-            long new_x = x;
-            long new_y = y;
-            long new_z = z;
+            int new_x = x;
+            int new_y = y;
+            int new_z = z;
 
             if (dir == 0) {
                 new_x++;
@@ -541,22 +546,25 @@ public class House {
     }
 
     public static class BlockType {
-        public static final int PLAIN  = 0;
-        public static final int DOOR   = 1;
-        public static final int LADDER = 2;
-        public static final int FENCE  = 4;
-        public static final int FAKE   = 8;
-        public static final int FLAG   = 16;
+        public static final int PLAIN     = 0;
 
-        public static BlockType AIR_LIKE    = new BlockType(false, true, PLAIN);
-        public static BlockType STONE_LIKE  = new BlockType(true, true, PLAIN);
-        public static BlockType ABOVE_FENCE = new BlockType(true, true, FAKE);
+        public static final int DOOR        = 1;
+        public static final int LADDER      = 2;
+        public static final int FENCE       = 4;
+        public static final int FAKE        = 8;
+        public static final int FLAG        = 16;
+        public static final int TILE_ENTITY = 32;
+
+        public static BlockType AIR_LIKE    = new BlockType(false, true,  PLAIN);
+        public static BlockType STONE_LIKE  = new BlockType(true,  true,  PLAIN);
+        public static BlockType ABOVE_FENCE = new BlockType(true,  true,  FAKE);
         public static BlockType LAVA_LIKE   = new BlockType(false, false, PLAIN);
-        public static BlockType CACTUS_LIKE = new BlockType(true, false, PLAIN);
-        public static BlockType DOOR_LIKE   = new BlockType(true, true, DOOR);
-        public static BlockType LADDER_LIKE = new BlockType(false, true, LADDER);
-        public static BlockType FENCE_LIKE  = new BlockType(false, true, FENCE);
-        public static BlockType HOUSE_FLAG  = new BlockType(false, true, FLAG);
+        public static BlockType CACTUS_LIKE = new BlockType(true,  false, PLAIN);
+        public static BlockType DOOR_LIKE   = new BlockType(true,  true,  DOOR);
+        public static BlockType LADDER_LIKE = new BlockType(false, true,  LADDER);
+        public static BlockType FENCE_LIKE  = new BlockType(false, true,  FENCE);
+        public static BlockType HOUSE_FLAG  = new BlockType(false, true,  FLAG);
+        public static BlockType CHEST_LIKE  = new BlockType(true,  true,  TILE_ENTITY);
 
         boolean solid;
         boolean safe;
@@ -603,6 +611,11 @@ public class House {
             return (flags & FLAG) == FLAG;
         }
 
+        public boolean isInteresting() {
+            // We may add more flags to the "interesting" list later.
+            return (flags & (TILE_ENTITY)) > 0;
+        }
+
         public boolean equals(Object other) {
             if (other instanceof BlockType) {
                 BlockType other_type = (BlockType) other;
@@ -621,8 +634,8 @@ public class House {
         }
 
         public static BlockType typeOf(Location loc, boolean check_for_fence) {
-            int id = loc.world.getBlockId((int)loc.x, (int)loc.y, (int)loc.z);
-            int meta = loc.world.getBlockMetadata((int)loc.x, (int)loc.y, (int)loc.z);
+            int id = loc.world.getBlockId(loc.x, loc.y, loc.z);
+            int meta = loc.world.getBlockMetadata(loc.x, loc.y, loc.z);
 
             if (id == 0) {
                 if (check_for_fence) {
@@ -642,7 +655,7 @@ public class House {
 
             if (block instanceof WustendorfMarker) {
                 return HOUSE_FLAG;
-            } else if (block.isLadder(loc.world, (int)loc.x, (int)loc.y, (int)loc.z)) {
+            } else if (block.isLadder(loc.world, loc.x, loc.y, loc.z)) {
                 return LADDER_LIKE;
             } else if (id == Block.doorWood.blockID
                        || id == Block.trapdoor.blockID) {
@@ -652,7 +665,11 @@ public class House {
 
             int flags = PLAIN;
 
-            AxisAlignedBB bb = block.getCollisionBoundingBoxFromPool(loc.world, (int)loc.x, (int)loc.y, (int)loc.z);
+            if (block.hasTileEntity(meta)) {
+                flags |= TILE_ENTITY;
+            }
+
+            AxisAlignedBB bb = block.getCollisionBoundingBoxFromPool(loc.world, loc.x, loc.y, loc.z);
             boolean solid = (bb != null);
 
             if (solid) {

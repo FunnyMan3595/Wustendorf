@@ -12,16 +12,15 @@ import cpw.mods.fml.common.event.FMLServerStartedEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 import cpw.mods.fml.common.network.IConnectionHandler;
-import cpw.mods.fml.common.network.ITinyPacketHandler;
+import cpw.mods.fml.common.network.IPacketHandler;
 import cpw.mods.fml.common.network.NetworkMod;
 import cpw.mods.fml.common.network.NetworkRegistry;
 import cpw.mods.fml.common.network.PacketDispatcher;
+import cpw.mods.fml.common.network.Player;
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.common.registry.TickRegistry;
-import ic2.api.Ic2Recipes;
 import ic2.api.Items;
 import ic2.common.ContainerElectricMachine;
-import ic2.common.Ic2Items;
 import ic2.common.IHasGui;
 import java.io.*;
 import java.sql.*;
@@ -41,6 +40,7 @@ import net.minecraft.src.EntityPlayer;
 import net.minecraft.src.EntityPlayerMP;
 import net.minecraft.src.EntitySlime;
 import net.minecraft.src.EnumSkyBlock;
+import net.minecraft.src.INetworkManager;
 import net.minecraft.src.Item;
 import net.minecraft.src.ItemStack;
 import net.minecraft.src.MathHelper;
@@ -50,6 +50,7 @@ import net.minecraft.src.NBTTagCompound;
 import net.minecraft.src.NetHandler;
 import net.minecraft.src.NetServerHandler;
 import net.minecraft.src.Packet131MapData;
+import net.minecraft.src.Packet250CustomPayload;
 import net.minecraft.src.Packet1Login;
 import net.minecraft.src.TileEntity;
 import net.minecraft.src.World;
@@ -64,7 +65,8 @@ import net.minecraft.src.WorldServer;
 @NetworkMod(
     clientSideRequired=true,
     serverSideRequired=false,
-    tinyPacketHandler=Wustendorf.PacketHandler.class,
+    packetHandler=Wustendorf.PacketHandler.class,
+    channels={"wustendorf_light"},
     versionBounds="%conf:VERSION_BOUNDS%"
 )
 public class Wustendorf implements ITickHandler {
@@ -80,11 +82,14 @@ public class Wustendorf implements ITickHandler {
     public static Wustendorf instance = null;
     public static Set<World> lightUpdated = new HashSet<World>();
 
+    public Map<Integer, Set<LightSource>> clientLightCache = new HashMap<Integer, Set<LightSource>>();
+    public Map<Integer, Set<LightSource>> serverLightCache = new HashMap<Integer, Set<LightSource>>();
+
     @SidedProxy(clientSide = "wustendorf.ClientProxy", serverSide = "wustendorf.CommonProxy")
     public static CommonProxy proxy;
 
-    public static int real_mod(int number, int modulus) {
-        int mod = number % modulus;
+    public static int real_mod(long number, int modulus) {
+        int mod = (int) (number % modulus);
         if (mod < 0) {
             // Java is a fucking idiot.
             mod += modulus;
@@ -138,17 +143,18 @@ public class Wustendorf implements ITickHandler {
         WustendorfMarker marker = new WustendorfMarker(ids[0]);
         ItemStack one_marker = new ItemStack(marker, 1);
         GameRegistry.registerBlock(marker);
-        //GameRegistry.registerBlock(marker, MarkerItem.class);
         //GameRegistry.registerTileEntity(MarkerTileEntity.class, "House Flag");
 
         proxy.init(marker);
 
         // Add crafting recipes
-        Ic2Recipes.addCraftingRecipe(one_marker, new Object[] {
-            "|# ", "|##", "|  ",
+        GameRegistry.addRecipe(one_marker,
+                "|# ",
+                "|##",
+                "|  ",
             Character.valueOf('|'), Item.stick,
-            Character.valueOf('#'), Block.cloth,
-        });
+            Character.valueOf('#'), Block.cloth
+        );
 
         // Register the GUI handler.
         //NetworkRegistry.instance().registerGuiHandler(this, new WustendorfGuiHandler());
@@ -176,6 +182,8 @@ public class Wustendorf implements ITickHandler {
         for (WustendorfDB worldDB : worldDBs.values()) {
             worldDB.close();
         }
+        clientLightCache.clear();
+        serverLightCache.clear();
         worldDBs.clear();
         activeInWorld.clear();
     }
@@ -185,63 +193,45 @@ public class Wustendorf implements ITickHandler {
         for (WustendorfDB worldDB : worldDBs.values()) {
             worldDB.close();
         }
+        clientLightCache.clear();
+        serverLightCache.clear();
         worldDBs.clear();
         activeInWorld.clear();
     }
 
-    public static void updateLightAt(World world, int x, int y, int z) {
-        boolean change = false;
+    public static int getRegionSafety(WorldServer world, int x, int z) {
+        WustendorfDB worldDB = getWorldDB(world);
 
-        int existing = world.getSavedLightValue(EnumSkyBlock.Block, x, y, z);
-        int override = overrideBlockLight(world, x, y, z);
+        return worldDB.getStrongestInRange("protect", x, z);
+    }
 
-        if (override != -1) {
-            if (existing != override) {
-                world.setLightValue(EnumSkyBlock.Block, x, y, z, override);
-                change = true;
-            }
+    public static int overrideLightDisplay(World world, int x, int y, int z) {
+        int overrideLevel = overrideLight(world, x, y, z);
+
+        if (overrideLevel < 0) {
+            return -1;
         } else {
-            world.updateLightByType(EnumSkyBlock.Block, x, y, z);
+            return (overrideLevel << 4) | (overrideLevel << 20);
+        }
+    }
 
-            int after = world.getSavedLightValue(EnumSkyBlock.Block, x, y, z);
-            if (after != existing) {
-                change = true;
+    public static int overrideLight(World world, int x, int y, int z) {
+        int dimension = world.provider.dimensionId;
+
+        Set<LightSource> lights = instance.serverLightCache.get(dimension);
+
+        if (lights == null || lights.isEmpty()) {
+            return -1;
+        }
+
+        int best = -1;
+        for (LightSource light : lights) {
+            if (light.contains(x, z)) {
+                best = Math.max(best, light.strength);
             }
         }
 
-        if (change) {
-            world.markBlockNeedsUpdate(x, y, z);
-        }
-    }
-
-    public static boolean inSafeRegion(World world, int x, int z) {
-        return false;
-    }
-
-    public static boolean inLitRegion(World world, int x, int z) {
-        return false;
-    }
-
-    public static int overrideBlockLight(World world, int x, int y, int z) {
-        if (!(world instanceof WorldServer)) {
-            return -1;
-        }
-
-        WorldServer ws = (WorldServer) world;
-
-        if (instance.activeInWorld.get(ws) != Boolean.TRUE) {
-            return -1;
-        }
-
-        WustendorfDB worldDB = getWorldDB(ws);
-
-        return worldDB.getRegionLight(x, z);
-    }
-
-    public static int overrideSkyLight(World world, int x, int y, int z) {
-        // XXX: There's no hook for this right now.
-        //      One would need to be added.
-        return -1;
+        return best;
     }
 
     public static boolean isHostile(EntityLiving mob) {
@@ -259,37 +249,49 @@ public class Wustendorf implements ITickHandler {
     }
 
     public static void considerKillingCritter(EntityLiving mob) {
-        if (!isHostile(mob)) {
+        if (!isHostile(mob) || !mob.isEntityAlive()) {
             return;
         }
 
-        int x = MathHelper.floor_double(mob.posX);
-        int z = MathHelper.floor_double(mob.posZ);
+        if (mob.worldObj instanceof WorldServer) {
+            WorldServer world = (WorldServer) mob.worldObj;
 
-        if (mob.isEntityAlive() && inSafeRegion(mob.worldObj, x, z)) {
-            zot(mob);
-        }
-    }
-
-    public static void zot(Entity entity) {
-        if (entity.worldObj instanceof WorldServer) {
-            if (instance.activeInWorld.get(entity.worldObj) != Boolean.TRUE) {
+            if (instance.activeInWorld.get(world) != Boolean.TRUE) {
                 return;
             }
 
-            // TODO: Check/charge energy.
+            int x = MathHelper.floor_double(mob.posX);
+            int z = MathHelper.floor_double(mob.posZ);
+            int safety = getRegionSafety(world, x, z);
+            if (safety < 1) {
+                return;
+            }
 
-            // Mostly-cosmetic lightning bolt.
-            WorldServer world = (WorldServer) entity.worldObj;
-            world.addWeatherEffect(
-                new EntityLightningBolt(world, entity.posX, entity.posY,
-                                               entity.posZ));
+            zot(world, mob, safety);
+        }
+    }
 
-            // Ensure the monster will take full damage.
+    public static void zot(WorldServer world, Entity entity, int safety) {
+        if (safety > 60) {
+            safety = 60;
+        }
+
+        int roll = instance.random.nextInt(600);
+        if (safety < roll) {
+            return;
+        }
+
+        // TODO: Some form of cost/counting?
+
+        // Zap it with a lightning bolt.
+        world.addWeatherEffect(
+            new EntityLightningBolt(world, entity.posX, entity.posY,
+                                           entity.posZ));
+
+        if (safety > 10) {
+            // Add some unblockable damage, too.
             entity.hurtResistantTime = 0;
-
-            // This should one-shot anything but a boss.
-            entity.attackEntityFrom(DamageSource.magic, 100);
+            entity.attackEntityFrom(DamageSource.magic, safety - 10);
         }
     }
 
@@ -313,25 +315,93 @@ public class Wustendorf implements ITickHandler {
         }
     }
 
+    public Packet250CustomPayload buildLightCachePacket(int dimension) {
+        Set<LightSource> lights = serverLightCache.get(dimension);
+
+        if (lights == null) {
+            lights = new HashSet<LightSource>();
+        }
+
+        try {
+            ByteArrayOutputStream arrayOutput = new ByteArrayOutputStream();
+            DataOutputStream data = new DataOutputStream(arrayOutput);
+
+            data.writeInt(dimension);
+            data.writeInt(lights.size());
+
+            for (LightSource light : lights) {
+                data.writeInt(light.x);
+                data.writeInt(light.y);
+                data.writeInt(light.z);
+                data.writeInt(light.range);
+                data.writeInt(light.strength);
+            }
+
+            byte[] bytes = arrayOutput.toByteArray();
+            return new Packet250CustomPayload("wustendorf_light", bytes);
+        } catch (Exception e) {
+            System.out.println("Wustendorf: Error building packet:");
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public void updateLightCache(Integer dimension, Set<LightSource> newCache) {
+        if (newCache.equals(serverLightCache.get(dimension))) {
+            // Nothing to do.
+        } else {
+            serverLightCache.put(dimension, newCache);
+            Packet250CustomPayload packet = buildLightCachePacket(dimension);
+            PacketDispatcher.sendPacketToAllPlayers(packet);
+        }
+    }
+
     public void tickStart(EnumSet<TickType> type, Object... tickData) {
         if (!(tickData[0] instanceof WorldServer)) {
             return;
         }
 
         WorldServer world = (WorldServer) tickData[0];
+        long tick = world.getWorldInfo().getWorldTime();
+        int phase = real_mod(tick, 100);
+        int dimension = world.provider.dimensionId;
         WustendorfDB worldDB = getWorldDB(world);
         int markerCount = worldDB.getMarkerCount();
 
         activeInWorld.put(world, (markerCount > 0));
 
-        // Tick updates.
-        for (int i=0; i<markerCount; i++) {
-            if (random.nextInt(100) == 0) {
-                int[] coords = worldDB.getMarker(i);
+        if (markerCount <= 0) {
+            updateLightCache(dimension, new HashSet<LightSource>());
+            return;
+        }
 
-                if (coords.length == 3) {
-                    WustendorfMarker.randomTick(world, coords[0], coords[1], coords[2]);
-                }
+        Set<LightSource> newCache = new HashSet<LightSource>();
+        List<List<Integer>> lightMarkers = worldDB.getMarkersWithTag("light");
+
+        if (lightMarkers != null) {
+            for (List<Integer> marker : lightMarkers) {
+                int x        = marker.get(0);
+                int y        = marker.get(1);
+                int z        = marker.get(2);
+                int range    = marker.get(3);
+                int strength = marker.get(4);
+                LightSource source = new LightSource(x, y, z, range, strength);
+
+                newCache.add(source);
+            }
+        }
+
+        updateLightCache(dimension, newCache);
+
+        // Tick updates.
+        List<List<Integer>> phaseMarkers = worldDB.getMarkersInPhase(phase);
+        if (phaseMarkers != null) {
+            for (List<Integer> marker : phaseMarkers) {
+                int x = marker.get(0);
+                int y = marker.get(1);
+                int z = marker.get(2);
+
+                WustendorfMarker.tick(world, x, y, z);
             }
         }
     }
@@ -346,23 +416,144 @@ public class Wustendorf implements ITickHandler {
         return "Wustendorf.lighting";
     }
 
-    public static class PacketHandler implements ITinyPacketHandler {
-        public void handle(NetHandler handler, Packet131MapData packet) {
-            short id = packet.uniqueID;
-            byte[] data = packet.itemData;
+//public interface IPlayerTracker
+//{
+    public void onPlayerLogin(EntityPlayer player) {
+        for (int dimension : serverLightCache.keySet()) {
+            PacketDispatcher.sendPacketToPlayer(buildLightCachePacket(dimension), (Player) player);
+        }
+    }
 
+    public void onPlayerLogout(EntityPlayer player) {}
+
+    public void onPlayerChangedDimension(EntityPlayer player) {}
+
+    public void onPlayerRespawn(EntityPlayer player) {}
+//}
+
+    public static class PacketHandler implements IPacketHandler {
+        public void onPacketData(INetworkManager manager, Packet250CustomPayload packet, Player player) {
             if (DEBUG) {
-                System.out.println("Got packet " + id + ":");
+                System.out.println("Got packet on channel " + packet.channel + ":");
                 String data_str = "";
-                for (byte datum : data) {
+                for (byte datum : packet.data) {
                     data_str += datum + ",";
                 }
                 System.out.println(data_str);
             }
 
             if (Wustendorf.getSide() == Side.CLIENT) {
+                if (packet.channel.equals("wustendorf_light")) {
+                    try {
+                        ByteArrayInputStream arrayInput = new ByteArrayInputStream(packet.data);
+                        DataInputStream data = new DataInputStream(arrayInput);
+
+                        int dimension = data.readInt();
+                        int count = data.readInt();
+
+                        Set<LightSource> lights = new HashSet<LightSource>();
+                        for (int i=0; i<count; i++) {
+                            int x        = data.readInt();
+                            int y        = data.readInt();
+                            int z        = data.readInt();
+                            int range    = data.readInt();
+                            int strength = data.readInt();
+                            LightSource light = new LightSource(x, y, z, range, strength);
+
+                            lights.add(light);
+                        }
+
+                        Set<LightSource> oldLights = instance.clientLightCache.get(dimension);
+                        if (oldLights == null) {
+                            oldLights = new HashSet<LightSource>();
+                        }
+
+                        World world = proxy.getLocalPlayer().worldObj;
+                        if (dimension == world.provider.dimensionId) {
+                            // Force a visual update on any new light sources.
+                            for (LightSource light : lights) {
+                                if (!oldLights.contains(light)) {
+                                    light.markDirty(world);
+                                } else {
+                                    oldLights.remove(light);
+                                }
+                            }
+
+                            // Force a visual update on any removed light sources.
+                            for (LightSource oldLight : oldLights) {
+                                oldLight.markDirty(world);
+                            }
+                        }
+
+                        instance.clientLightCache.put(dimension, lights);
+                    } catch (Exception e) {
+                        System.out.println("Wustendorf: Packet error:");
+                        e.printStackTrace();
+                    }
+                }
             } else { // Server/bukkit side
             }
+        }
+    }
+
+    public static class LightSource {
+        public int x;
+        public int y;
+        public int z;
+        public int range;
+        public int strength;
+
+        public LightSource(int x, int y, int z, int range, int strength) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.range = range;
+            this.strength = strength;
+        }
+
+        public int hashCode() {
+            int hash = 0;
+            hash |= (this.x & 0xff);
+            hash |= (this.y & 0xff) << 8;
+            hash |= (this.z & 0xff) << 16;
+
+            // We don't bother hashing range/strength, as only one LightSource
+            // can be at any given x,y,z at a time.
+            return hash;
+        }
+
+        public boolean equals(Object generic_other) {
+            if (generic_other instanceof LightSource) {
+                LightSource other = (LightSource) generic_other;
+                if (this.x == other.x && this.y == other.y && this.z == other.z
+                    && this.range == other.range
+                    && this.strength == other.strength) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public boolean contains(int target_x, int target_z) {
+            int dx = Math.abs(x - target_x);
+            if (dx > range) {
+                return false;
+            }
+
+            int dz = Math.abs(z - target_z);
+            if (dz > range) {
+                return false;
+            }
+
+            return true;
+        }
+
+        public void markDirty(World world) {
+            world.markBlocksDirty(x-range, 0, z-range, x+range, 255, z+range);
+        }
+
+        public String toString() {
+            return x + "," + y + "," + z + ": range " + range + ", strength " + strength;
         }
     }
 }

@@ -23,14 +23,23 @@ public class HookFinder extends ClassVisitor implements IClassTransformer {
         class_table = new HashMap<String, Map<String, Integer>>();
 
         String world_class = "%conf:OBF_WORLD%";
-        String compute_block_light = "%conf:OBF_COMPUTE_BLOCK_LIGHT%(IIIIII)I";
+        String block_light_value = "%conf:OBF_BLOCK_LIGHT_VALUE%(IIIZ)I";
+        String display_light_value = "%conf:OBF_DISPLAY_LIGHT_VALUE%(IIII)I";
+
+        String chunkcache_class = "%conf:OBF_CHUNK_CACHE%";
 
         String entityliving_class = "%conf:OBF_ENTITY_LIVING%";
         String update = "%conf:OBF_ON_LIVING_UPDATE%()V";
 
         Map<String, Integer> world = new HashMap<String, Integer>();
-        world.put(compute_block_light, HookAdder.HOOK_LIGHT_OVERRIDE);
+        world.put(block_light_value, HookAdder.HOOK_LIGHT_OVERRIDE);
+        world.put(display_light_value, HookAdder.HOOK_LIGHT_DISPLAY);
         class_table.put(world_class, world);
+
+        Map<String, Integer> chunkcache = new HashMap<String, Integer>();
+        chunkcache.put(block_light_value, HookAdder.HOOK_LIGHT_OVERRIDE_CACHE);
+        chunkcache.put(display_light_value, HookAdder.HOOK_LIGHT_DISPLAY_CACHE);
+        class_table.put(chunkcache_class, chunkcache);
 
         Map<String, Integer> entityliving = new HashMap<String, Integer>();
         entityliving.put(update, HookAdder.HOOK_CONSIDER_KILL);

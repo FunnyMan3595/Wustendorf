@@ -109,27 +109,6 @@ public class CommandWustendorf extends CommandBase {
 
                 sender.sendChatToPlayer("Current tags:");
                 sender.sendChatToPlayer(output);
-            } else if (params[1].equals("set")) {
-                boolean okay = false;
-                int value = -1;
-                String tag = null;
-
-                if (params.length == 4) {
-                    tag = params[2];
-
-                    try {
-                        value = Integer.parseInt(params[3]);
-                        okay = true;
-                    } catch (NumberFormatException e) { }
-                }
-
-                if (!okay) {
-                    sender.sendChatToPlayer("Usage: /w tag set <tag> <level>");
-                    return;
-                }
-
-                worldDB.setTag(value, tag, x, y, z);
-                sender.sendChatToPlayer("Set tag " + tag + " to " + value + ".");
             } else if (params[1].equals("clear")) {
                 if (params.length == 3) {
                     String tag = params[2];
@@ -142,7 +121,26 @@ public class CommandWustendorf extends CommandBase {
 
                 sender.sendChatToPlayer("Usage: /w tag clear <tag>");
             } else {
-                sender.sendChatToPlayer("Do what with the tags?");
+                boolean okay = false;
+                int value = -1;
+                String tag = null;
+
+                if (params.length == 3) {
+                    tag = params[1];
+
+                    try {
+                        value = Integer.parseInt(params[2]);
+                        okay = true;
+                    } catch (NumberFormatException e) { }
+                }
+
+                if (!okay) {
+                    sender.sendChatToPlayer("Usage: /w tag <tag> <level>");
+                    return;
+                }
+
+                worldDB.setTag(value, tag, x, y, z);
+                sender.sendChatToPlayer("Set tag " + tag + " to " + value + ".");
             }
         } else if (params[0].equals("range")) {
             if (params.length < 2) {
