@@ -63,7 +63,7 @@ public class CommandWustendorf extends CommandBase {
 
         // Flag-bound commands.
 
-        Vec3 position = player.getPosition(0F);
+        Vec3 position = world.getWorldVec3Pool().getVecFromPool(player.posX, player.posY, player.posZ);
         position.yCoord += 1.6;
         Vec3 look = player.getLook(0F);
         Vec3 lookLimit = position.addVector(look.xCoord * 10, look.yCoord * 10, look.zCoord * 10);
