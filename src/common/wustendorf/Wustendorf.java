@@ -221,7 +221,13 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
     public static int overrideLight(World world, int x, int y, int z) {
         int dimension = world.provider.dimensionId;
 
-        Set<LightSource> lights = instance.serverLightCache.get(dimension);
+
+        Set<LightSource> lights;
+        if (getSide() == Side.CLIENT) {
+            lights = instance.clientLightCache.get(dimension);
+        } else {
+            lights = instance.serverLightCache.get(dimension);
+        }
 
         if (lights == null || lights.isEmpty()) {
             return -1;
