@@ -18,6 +18,7 @@ import cpw.mods.fml.common.network.NetworkRegistry;
 import cpw.mods.fml.common.network.PacketDispatcher;
 import cpw.mods.fml.common.network.Player;
 import cpw.mods.fml.common.registry.GameRegistry;
+import cpw.mods.fml.common.IPlayerTracker;
 import cpw.mods.fml.common.registry.TickRegistry;
 import ic2.api.Items;
 import ic2.common.ContainerElectricMachine;
@@ -69,7 +70,7 @@ import net.minecraft.src.WorldServer;
     channels={"wustendorf_light"},
     versionBounds="%conf:VERSION_BOUNDS%"
 )
-public class Wustendorf implements ITickHandler {
+public class Wustendorf implements ITickHandler, IPlayerTracker {
 
     public Random random = new Random();
     private Connection masterDB = null;
@@ -159,9 +160,11 @@ public class Wustendorf implements ITickHandler {
         // Register the GUI handler.
         //NetworkRegistry.instance().registerGuiHandler(this, new WustendorfGuiHandler());
 
-        //TickRegistry.registerTickHandler(this, Side.CLIENT);
+        // We want to handle server-side ticks.
         TickRegistry.registerTickHandler(this, Side.SERVER);
-        //TickRegistry.registerTickHandler(this, Side.BUKKIT);
+
+        // And player connect events.
+        GameRegistry.registerPlayerTracker(this);
     }
 
     public static Side getSide() {
