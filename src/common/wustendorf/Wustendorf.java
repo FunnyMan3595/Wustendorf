@@ -425,25 +425,36 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
             }
         }
 
+        int player_phase = 0;
         for (EntityPlayer player : (List<EntityPlayer>) world.playerEntities) {
             int x = MathHelper.floor_double(player.posX);
             int z = MathHelper.floor_double(player.posZ);
             int flight = worldDB.getStrongestInRange("flight", x, z);
 
+            boolean flight_changed = false;
             if (flight <= 0) {
                 // Ensure they can't use Wustendorf flight.
                 if (    player.capabilities.allowFlying
                     && !player.capabilities.isCreativeMode) {
                     player.capabilities.allowFlying = false;
                     player.capabilities.isFlying = false;
-                    player.sendPlayerAbilities();
+                    flight_changed = true;
                 }
             } else {
                 // Ensure they can use Wustendorf flight.
                 if (!player.capabilities.allowFlying) {
                     player.capabilities.allowFlying = true;
-                    player.sendPlayerAbilities();
+                    flight_changed = true;
                 }
+            }
+
+            if (flight_changed || phase == player_phase) {
+                player.sendPlayerAbilities();
+            }
+
+            player_phase += 1;
+            if (player_phase >= 100) {
+                player_phase = 0;
             }
         }
     }
