@@ -362,6 +362,7 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         }
     }
 
+    @SuppressWarnings("unchecked")
     public void tickStart(EnumSet<TickType> type, Object... tickData) {
         if (!(tickData[0] instanceof WorldServer)) {
             return;
@@ -377,13 +378,25 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         activeInWorld.put(world, (markerCount > 0));
 
         if (markerCount <= 0) {
+            // Not much to do, just make sure there aren't any light sources
+            // cached, since none exist.
             updateLightCache(dimension, new HashSet<LightSource>());
+
+            // And that nobody's using the flight from a marker that's gone.
+            for (EntityPlayer player : (List<EntityPlayer>) world.playerEntities) {
+                if (    player.capabilities.allowFlying
+                    && !player.capabilities.isCreativeMode) {
+                    player.capabilities.allowFlying = false;
+                    player.capabilities.isFlying = false;
+                    player.sendPlayerAbilities();
+                }
+            }
             return;
         }
 
+        // Load the currently-existing light sources.
         Set<LightSource> newCache = new HashSet<LightSource>();
         List<List<Integer>> lightMarkers = worldDB.getMarkersWithTag("light");
-
         if (lightMarkers != null) {
             for (List<Integer> marker : lightMarkers) {
                 int x        = marker.get(0);
@@ -397,9 +410,10 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
             }
         }
 
+        // Make sure the cached light sources match the actual ones.
         updateLightCache(dimension, newCache);
 
-        // Tick updates.
+        // Tick updates for markers.
         List<List<Integer>> phaseMarkers = worldDB.getMarkersInPhase(phase);
         if (phaseMarkers != null) {
             for (List<Integer> marker : phaseMarkers) {
@@ -408,6 +422,28 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
                 int z = marker.get(2);
 
                 WustendorfMarker.tick(world, x, y, z);
+            }
+        }
+
+        for (EntityPlayer player : (List<EntityPlayer>) world.playerEntities) {
+            int x = MathHelper.floor_double(player.posX);
+            int z = MathHelper.floor_double(player.posZ);
+            int flight = worldDB.getStrongestInRange("flight", x, z);
+
+            if (flight <= 0) {
+                // Ensure they can't use Wustendorf flight.
+                if (    player.capabilities.allowFlying
+                    && !player.capabilities.isCreativeMode) {
+                    player.capabilities.allowFlying = false;
+                    player.capabilities.isFlying = false;
+                    player.sendPlayerAbilities();
+                }
+            } else {
+                // Ensure they can use Wustendorf flight.
+                if (!player.capabilities.allowFlying) {
+                    player.capabilities.allowFlying = true;
+                    player.sendPlayerAbilities();
+                }
             }
         }
     }
