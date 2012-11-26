@@ -89,7 +89,9 @@ public class House {
             for (y = start.y; y >= 0; y--) {
                 type = BlockType.typeOf(new Location(world, x, y, z));
 
-                if (type == BlockType.AIR_LIKE) {
+                if (type.isFlag()) {
+                    continue;
+                } else if (type.isLadder() || !type.isSolidOrUnsafe()) {
                     found_air = true;
                 } else if (found_air) {
                     y++; // Go back into the air.
