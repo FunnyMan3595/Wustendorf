@@ -1,5 +1,6 @@
 package wustendorf;
 
+import com.googlecode.flyway.core.Flyway;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.ITickHandler;
 import cpw.mods.fml.common.Mod;
@@ -21,7 +22,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.common.IPlayerTracker;
 import cpw.mods.fml.common.registry.TickRegistry;
 import java.io.*;
+import java.lang.reflect.*;
 import java.sql.*;
+import javax.sql.*;
 import java.util.*;
 import java.util.zip.GZIPInputStream;
 import net.minecraftforge.common.Configuration;
@@ -96,6 +99,21 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         return mod;
     }
 
+    @SuppressWarnings("unchecked")
+    public static DataSource getH2DataSource(File dbFile) throws Exception {
+        // We create initialize the DataSource via reflection, to avoid a
+        // trivial compile-time dependency.
+
+        // (Seriously, why couldn't Flyway just take a JDBC URL?)
+        // (Or even an actual Connection!)
+        Class h2DataSource = Class.forName("org.h2.jdbcx.JdbcDataSource");
+        DataSource ds = (DataSource) h2DataSource.newInstance();
+        Method setURL = h2DataSource.getMethod("setURL", String.class);
+        setURL.invoke(ds, "jdbc:h2:" + dbFile);
+
+        return ds;
+    }
+
     @Mod.PreInit
     public void preInit(FMLPreInitializationEvent event) {
         instance = this;
@@ -107,12 +125,21 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
                                "wustendorf");
 
         try {
-            Class.forName("org.h2.Driver");
-            masterDB = DriverManager.getConnection("jdbc:h2:" +
-                                                   dbFile.getCanonicalPath());
+            // Get a reference to the database.
+            DataSource ds = getH2DataSource(dbFile);
 
+            // Use Flyway to create or upgrade the database, if needed.
+            Flyway updater = new Flyway();
+            updater.setDataSource(ds);
+            updater.setLocations("wustendorf.flyway.masterdb");
+            updater.setInitOnMigrate(true);
+            updater.migrate();
+
+            // And finally connnect to the database.
+            masterDB = ds.getConnection();
         } catch (Exception e) {
-            System.out.println("Wustendorf: Unable to initialize database.");
+            System.out.println("Wustendorf: Unable to initialize database:");
+            e.printStackTrace();
         }
     }
 

@@ -4,7 +4,10 @@ import net.minecraft.src.WorldServer;
 
 import java.io.*;
 import java.sql.*;
+import javax.sql.*;
 import java.util.*;
+
+import com.googlecode.flyway.core.Flyway;
 
 public class WustendorfDB {
     private Connection conn = null;
@@ -14,29 +17,25 @@ public class WustendorfDB {
     public WustendorfDB(WorldServer world) {
         File dbFile = new File(world.getChunkSaveLocation(), "wustendorf");
         try {
-            conn = DriverManager.getConnection("jdbc:h2:" + dbFile);
-            direct = conn.createStatement();
+            // Get a reference to the database.
+            DataSource ds = Wustendorf.getH2DataSource(dbFile);
 
-            createTables();
+            // Use Flyway to create or upgrade the database, if needed.
+            Flyway updater = new Flyway();
+            updater.setDataSource(ds);
+            updater.setLocations("wustendorf.flyway.worlddb");
+            updater.setInitOnMigrate(true);
+            updater.migrate();
+
+            // And finally connect to the database.
+            conn = ds.getConnection();
+            direct = conn.createStatement();
         } catch (Exception e) {
             System.out.println("Wustendorf: Unable to open database " + dbFile);
             e.printStackTrace();
 
             conn = null;
             direct = null;
-        }
-    }
-
-    public void createTables() throws SQLException {
-        String[] sql = new String[] {
-            "CREATE TABLE IF NOT EXISTS Markers (marker_id INTEGER AUTO_INCREMENT UNIQUE, marker_x INTEGER NOT NULL, marker_y INTEGER NOT NULL, marker_z INTEGER NOT NULL, range INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(marker_x, marker_y, marker_z));",
-            "CREATE TABLE IF NOT EXISTS Tags (marker_id INTEGER NOT NULL, tag_name VARCHAR(32) NOT NULL, value INTEGER NOT NULL, PRIMARY KEY(marker_id, tag_name));",
-            "CREATE TABLE IF NOT EXISTS Rooms (marker_id INTEGER NOT NULL, room_id INTEGER NOT NULL, x_min INTEGER NOT NULL, x_max INTEGER NOT NULL, y_min INTEGER NOT NULL, y_max INTEGER NOT NULL, z_min INTEGER NOT NULL, z_max INTEGER NOT NULL, room_x INTEGER NOT NULL, room_y INTEGER NOT NULL, room_z INTEGER NOT NULL, PRIMARY KEY(marker_id, room_id));",
-            "CREATE TABLE IF NOT EXISTS ImportantBlocks (marker_id INTEGER NOT NULL, room_id INTEGER NOT NULL, block_x INTEGER NOT NULL, block_y INTEGER NOT NULL, block_z INTEGER NOT NULL, type INTEGER NOT NULL, PRIMARY KEY(block_x, block_y, block_z));"
-        };
-
-        for (String instruction : sql) {
-            direct.executeUpdate(instruction);
         }
     }
 

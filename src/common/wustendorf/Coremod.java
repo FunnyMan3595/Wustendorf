@@ -10,7 +10,8 @@ public class Coremod implements IFMLLoadingPlugin {
     public String[] getLibraryRequestClass() {
         return new String[] {
             "cpw.mods.fml.relauncher.CoreFMLLibraries",
-            "wustendorf.H2Request"
+            "wustendorf.H2Request",
+            "wustendorf.FlywayRequest"
         };
     }
 
