@@ -80,12 +80,12 @@ public class WustendorfDB {
         return stmt.executeQuery();
     }
 
-    protected int getInt(String query, Object... params) {
+    protected Integer getInt(String query, Object... params) {
         try {
             ResultSet results = getResults(query, params);
 
             if (!results.next()) {
-                return -1;
+                return null;
             }
 
             return results.getInt(1);
@@ -96,7 +96,7 @@ public class WustendorfDB {
             }
         }
 
-        return -1;
+        return null;
     }
 
     protected List<List<Integer>> getIntMatrix(int len, String query, Object... params) {
@@ -173,34 +173,60 @@ public class WustendorfDB {
         return null;
     }
 
-    public int getMarkerID(int x, int y, int z) {
+    public Integer getMarkerID(int x, int y, int z) {
         return getInt("SELECT marker_id FROM Markers WHERE marker_x=? AND marker_y=? AND marker_z=?;", x, y, z);
     }
 
-    public List<List<Integer>> getMarkersInPhase(int phase) {
-        return getIntMatrix(3, "SELECT marker_x, marker_y, marker_z FROM Markers WHERE (marker_id % 100)=?;", phase);
-    }
+    public List<DBMarker> getMarkersInPhase(int phase) {
+        List<List<Integer>> info = getIntMatrix(5, "SELECT marker_id, marker_x, marker_y, marker_z, marker_range FROM Markers WHERE (marker_id % 100)=?;", phase);
 
-    public int addMarker(int x, int y, int z) {
-        int marker = getMarkerID(x, y, z);
-        if (marker != -1) {
-            return -1;
+        if (info == null) {
+            return null;
         }
 
-        execute("INSERT INTO Markers VALUES (DEFAULT, ?, ?, ?, DEFAULT);", x, y, z);
+        List<DBMarker> markers = new ArrayList<DBMarker>();
+        for (List<Integer> marker_info : info) {
+            DBMarker marker = new DBMarker(this, marker_info.get(1), marker_info.get(2), marker_info.get(3));
+            marker.id = marker_info.get(0);
+            marker.range = marker_info.get(4);
+
+            markers.add(marker);
+        }
+
+        return markers;
+    }
+
+    public Integer addMarker(int x, int y, int z) {
+        return addMarkerWithRange(x, y, z, 0);
+    }
+
+    public Integer addMarkerWithRange(int x, int y, int z, int range) {
+        if (getMarkerID(x, y, z) != null) {
+            return null;
+        }
+
+        execute("INSERT INTO Markers VALUES (DEFAULT, ?, ?, ?, ?);", x, y, z, range);
 
         return getMarkerID(x, y, z);
     }
 
-    public void removeMarker(int x, int y, int z) {
-        int marker = getMarkerID(x, y, z);
+    public DBMarker getMarkerAt(int x, int y, int z) {
+        return new DBMarker(this, x, y, z);
+    }
 
-        if (marker != -1) {
-            execute("DELETE FROM Tags WHERE marker_id=?;", marker);
-            execute("DELETE FROM Markers WHERE marker_id=?;", marker);
-            execute("DELETE FROM Rooms WHERE marker_id=?;", marker);
-            execute("DELETE FROM ImportantBlocks WHERE marker_id=?;", marker);
+    public void removeMarker(int x, int y, int z) {
+        Integer marker = getMarkerID(x, y, z);
+
+        if (marker != null) {
+            removeMarker(marker);
         }
+    }
+
+    public void removeMarker(int marker) {
+        execute("DELETE FROM Tags WHERE marker_id=?;", marker);
+        execute("DELETE FROM Markers WHERE marker_id=?;", marker);
+        execute("DELETE FROM Rooms WHERE marker_id=?;", marker);
+        execute("DELETE FROM ImportantBlocks WHERE marker_id=?;", marker);
     }
 
     public void addRoom(int marker, int room_id, int x_min, int x_max, int y_min, int y_max, int z_min, int z_max, int x_origin, int y_origin, int z_origin) {
@@ -218,58 +244,76 @@ public class WustendorfDB {
                 marker, room_id, x, y, z, type);
     }
 
-    public int getRange(int x, int y, int z) {
-        return getInt("SELECT range FROM Markers WHERE marker_x=? AND marker_y=? AND marker_z=?;", x, y, z);
+    public int getRange(int marker) {
+        return getInt("SELECT range FROM Markers WHERE marker_id=?;", marker);
     }
 
-    public void setRange(int value, int x, int y, int z) {
-        execute("UPDATE Markers SET range=? WHERE marker_x=? AND marker_y=? AND marker_z=?;", value, x, y, z);
+    public void setRange(int marker, int range) {
+        execute("UPDATE Markers SET range=? WHERE marker_id=?;", range, marker);
     }
 
-    public void clearTag(String tag, int x, int y, int z) {
-        int marker = getMarkerID(x, y, z);
-        if (marker != -1) {
-            execute("DELETE FROM Tags WHERE marker_id=? AND tag_name=?;", marker, tag);
-        }
+    public void clearTag(int marker, String tag) {
+        execute("DELETE FROM Tags WHERE marker_id=? AND tag_name=?;", marker, tag);
     }
 
-    public void setTag(int value, String tag, int x, int y, int z) {
-        int marker = getMarkerID(x, y, z);
-        if (marker != -1) {
-            execute("DELETE FROM Tags WHERE marker_id=? AND tag_name=?;", marker, tag);
-            execute("INSERT INTO Tags VALUES (?, ?, ?);", marker, tag, value);
-        }
+    public void setTag(int marker, String tag, int value) {
+        execute("MERGE INTO Tags VALUES (?, ?, ?);", marker, tag, value);
     }
 
     public int getMarkerCount() {
         return getInt("SELECT COUNT(*) FROM Markers;");
     }
 
-    public int[] getMarker(int index) {
-        return getIntArray(3, "SELECT marker_x, marker_y, marker_z FROM Markers LIMIT 1 OFFSET ?;", index);
+    public DBMarker getMarker(int index) {
+        int[] info = getIntArray(5, "SELECT marker_id, marker_x, marker_y, marker_z, marker_range FROM Markers LIMIT 1 OFFSET ?;", index);
+        if (info.length == 5) {
+            DBMarker marker = new DBMarker(this, info[1], info[2], info[3]);
+            marker.id = info[0];
+            marker.range = info[4];
+
+            return marker;
+        } else {
+            return null;
+        }
     }
 
-    public int getTag(String tag, int x, int y, int z) {
-        return getInt("SELECT value FROM Tags NATURAL JOIN Markers WHERE tag_name=? AND marker_x=? AND marker_y=? AND marker_z=?;", tag, x, y, z);
+    public int getTag(int marker, String tag) {
+        return getInt("SELECT value FROM Tags NATURAL JOIN Markers WHERE marker_id=? AND tag_name=?;", marker, tag);
     }
 
-    public Map<String, Integer> getAllTags(int x, int y, int z) {
-        return getIntMap("SELECT tag_name, value FROM Tags NATURAL JOIN Markers WHERE marker_x=? AND marker_y=? AND marker_z=?;", x, y, z);
+    public Map<String, Integer> getAllTags(int marker) {
+        return getIntMap("SELECT tag_name, value FROM Tags NATURAL JOIN Markers WHERE marker_id=?;", marker);
     }
 
-    public Map<String, Integer> getMatchingTags(String match, int x, int y, int z) {
-        return getIntMap("SELECT tag_name, value FROM Tags NATURAL JOIN Markers WHERE tag_name LIKE ? AND marker_x=? AND marker_y=? AND marker_z=?;", match, x, y, z);
+    public Map<String, Integer> getMatchingTags(int marker, String match) {
+        return getIntMap("SELECT tag_name, value FROM Tags NATURAL JOIN Markers WHERE marker_id=? AND tag_name LIKE ?;", marker, match);
     }
 
     public List<List<Integer>> getImportantBlocks(int x, int y, int z) {
         return getIntMatrix(3, "SELECT block_x, block_y, block_z from ImportantBlocks NATURAL JOIN Markers WHERE marker_x=? AND marker_y=? AND marker_z=?", x, y, z);
     }
 
-    public List<List<Integer>> getMarkersWithTag(String match) {
-        return getIntMatrix(5, "SELECT marker_x, marker_y, marker_z, range, value FROM Tags NATURAL JOIN Markers WHERE tag_name=?;", match);
+    public List<DBMarker> getMarkersWithTag(String tag) {
+        List<List<Integer>> info = getIntMatrix(6, "SELECT marker_id, marker_x, marker_y, marker_z, range, value FROM Tags NATURAL JOIN Markers WHERE tag_name=?;", tag);
+
+        if (info == null) {
+            return null;
+        }
+
+        List<DBMarker> markers = new ArrayList<DBMarker>();
+        for (List<Integer> marker_info : info) {
+            DBMarker marker = new DBMarker(this, marker_info.get(1), marker_info.get(2), marker_info.get(3));
+            marker.id = marker_info.get(0);
+            marker.range = marker_info.get(4);
+            marker.tags.put(tag, marker_info.get(5));
+
+            markers.add(marker);
+        }
+
+        return markers;
     }
 
-    public int getStrongestInRange(String tag, int x, int z) {
+    public int getBestInRange(String tag, int x, int z) {
         return getInt("SELECT MAX(value) FROM Tags NATURAL JOIN Markers WHERE tag_name=? AND ABS(marker_x-?)<=range AND ABS(marker_z-?)<=range;", tag, x, z);
     }
 

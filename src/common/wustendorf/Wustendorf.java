@@ -202,7 +202,7 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
     public static int getRegionSafety(WorldServer world, int x, int z) {
         WustendorfDB worldDB = getWorldDB(world);
 
-        return worldDB.getStrongestInRange("protect", x, z);
+        return worldDB.getBestInRange("protect", x, z);
     }
 
     public static int overrideLightDisplay(World world, int x, int y, int z) {
@@ -396,14 +396,14 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
 
         // Load the currently-existing light sources.
         Set<LightSource> newCache = new HashSet<LightSource>();
-        List<List<Integer>> lightMarkers = worldDB.getMarkersWithTag("light");
+        List<DBMarker> lightMarkers = worldDB.getMarkersWithTag("light");
         if (lightMarkers != null) {
-            for (List<Integer> marker : lightMarkers) {
-                int x        = marker.get(0);
-                int y        = marker.get(1);
-                int z        = marker.get(2);
-                int range    = marker.get(3);
-                int strength = marker.get(4);
+            for (DBMarker marker : lightMarkers) {
+                int x        = marker.x;
+                int y        = marker.y;
+                int z        = marker.z;
+                int range    = marker.range;
+                int strength = marker.getTag("light");
                 LightSource source = new LightSource(x, y, z, range, strength);
 
                 newCache.add(source);
@@ -414,14 +414,10 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         updateLightCache(dimension, newCache);
 
         // Tick updates for markers.
-        List<List<Integer>> phaseMarkers = worldDB.getMarkersInPhase(phase);
+        List<DBMarker> phaseMarkers = worldDB.getMarkersInPhase(phase);
         if (phaseMarkers != null) {
-            for (List<Integer> marker : phaseMarkers) {
-                int x = marker.get(0);
-                int y = marker.get(1);
-                int z = marker.get(2);
-
-                WustendorfMarker.tick(world, x, y, z);
+            for (DBMarker marker : phaseMarkers) {
+                WustendorfMarker.tick(world, marker);
             }
         }
 
@@ -429,7 +425,7 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         for (EntityPlayer player : (List<EntityPlayer>) world.playerEntities) {
             int x = MathHelper.floor_double(player.posX);
             int z = MathHelper.floor_double(player.posZ);
-            int flight = worldDB.getStrongestInRange("flight", x, z);
+            int flight = worldDB.getBestInRange("flight", x, z);
 
             boolean flight_changed = false;
             if (flight <= 0) {

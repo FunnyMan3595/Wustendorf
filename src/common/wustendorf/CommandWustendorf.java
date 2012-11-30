@@ -48,7 +48,7 @@ public class CommandWustendorf extends CommandBase {
             } else if (params[1].equals("tag")) {
                 sender.sendChatToPlayer("Usage:");
                 sender.sendChatToPlayer("/w tag {|list} - List tags on target flag.");
-                sender.sendChatToPlayer("/w tag set <tag> <level> - Set tag on target flag.");
+                sender.sendChatToPlayer("/w tag <tag> <level> - Set tag on target flag.");
                 sender.sendChatToPlayer("/w tag clear <tag> - Remove tag from target flag.");
             } else if (params[1].equals("range")) {
                 sender.sendChatToPlayer("Usage:");
@@ -90,10 +90,16 @@ public class CommandWustendorf extends CommandBase {
         }
 
         WustendorfDB worldDB = Wustendorf.getWorldDB(world);
+        DBMarker marker = worldDB.getMarkerAt(x, y, z);
 
         if (params[0].equals("tag")) {
             if (params.length < 2 || params[1].equals("list")) {
-                Map<String, Integer> tags = worldDB.getAllTags(x, y, z);
+                Map<String, Integer> tags = marker.getAllTags();
+
+                if (tags == null) {
+                    sender.sendChatToPlayer("This house flag is uninitialized.");
+                    return;
+                }
 
                 ArrayList<String> keys = new ArrayList(tags.keySet());
                 Collections.sort(keys);
@@ -113,9 +119,8 @@ public class CommandWustendorf extends CommandBase {
                 if (params.length == 3) {
                     String tag = params[2];
 
-                    worldDB.clearTag(tag, x, y, z);
+                    marker.removeTag(tag);
                     sender.sendChatToPlayer("Removed tag " + tag + ".");
-
                     return;
                 }
 
@@ -128,10 +133,16 @@ public class CommandWustendorf extends CommandBase {
                 if (params.length == 3) {
                     tag = params[1];
 
-                    try {
-                        value = Integer.parseInt(params[2]);
-                        okay = true;
-                    } catch (NumberFormatException e) { }
+                    if (params[2].equals("-")) {
+                        marker.removeTag(tag);
+                        sender.sendChatToPlayer("Removed tag " + tag + ".");
+                        return;
+                    } else {
+                        try {
+                            value = Integer.parseInt(params[2]);
+                            okay = true;
+                        } catch (NumberFormatException e) { }
+                    }
                 }
 
                 if (!okay) {
@@ -139,14 +150,22 @@ public class CommandWustendorf extends CommandBase {
                     return;
                 }
 
-                worldDB.setTag(value, tag, x, y, z);
-                sender.sendChatToPlayer("Set tag " + tag + " to " + value + ".");
+                marker.setTag(tag, value);
+                if (marker.getTag(tag, false) != value) {
+                    sender.sendChatToPlayer("Failed to set tag.");
+                } else {
+                    sender.sendChatToPlayer("Set tag " + tag + " to " + value + ".");
+                }
             }
         } else if (params[0].equals("range")) {
             if (params.length < 2) {
-                int range = worldDB.getRange(x, y, z);
+                Integer range = marker.getRange();
 
-                sender.sendChatToPlayer("This house flag has range " + range + ".");
+                if (range == null) {
+                    sender.sendChatToPlayer("This house flag is uninitialized.");
+                } else {
+                    sender.sendChatToPlayer("This house flag has range " + range + ".");
+                }
             } else {
                 boolean okay = false;
                 int new_range = -1;
@@ -162,8 +181,12 @@ public class CommandWustendorf extends CommandBase {
                     return;
                 }
 
-                worldDB.setRange(new_range, x, y, z);
-                sender.sendChatToPlayer("Range set to " + new_range + ".");
+                marker.setRange(new_range);
+                if (marker.getRange(false) != new_range) {
+                    sender.sendChatToPlayer("Failed to set range.");
+                } else {
+                    sender.sendChatToPlayer("Range set to " + new_range + ".");
+                }
             }
         } else {
             sender.sendChatToPlayer("Unknown subcommand.");

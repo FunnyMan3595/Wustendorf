@@ -63,9 +63,9 @@ public class WustendorfMarker extends Block {
             return;
         }
 
-        int id = worldDB.addMarker(x, y, z);
+        Integer id = worldDB.addMarker(x, y, z);
 
-        if (id == -1) {
+        if (id == null) {
             System.out.println("Unable to insert marker.  Aborting.");
             popFlag(world, x, y, z);
             return;
@@ -152,16 +152,21 @@ public class WustendorfMarker extends Block {
         worldDB.removeMarker(x, y, z);
     }
 
-    public static void tick(WorldServer world, int x, int y, int z) {
-        WustendorfDB worldDB = Wustendorf.instance.getWorldDB(world);
+    public static void tick(WorldServer world, DBMarker marker) {
+        int x = marker.x;
+        int y = marker.y;
+        int z = marker.z;
 
-        int food = worldDB.getTag("food_level", x, y, z);
+        // Pre-fill the marker's tag cache, to avoid extra DB calls.
+        marker.getAllTags();
+
+        int food = marker.getTag("food_level");
 
         if (food < 0) {
             food = 0;
         }
 
-        int food_use = worldDB.getTag("food_use", x, y, z);
+        int food_use = marker.getTag("food_use");
 
         if (food_use <= 0) {
             return;
@@ -170,12 +175,12 @@ public class WustendorfMarker extends Block {
         food -= food_use;
 
         if (food < 0) {
-            int food_multiplier = worldDB.getTag("food_multiplier", x, y, z);
+            int food_multiplier = marker.getTag("food_multiplier");
             if (food_multiplier <= 0) {
                 food_multiplier = 6;
             }
 
-            for (List<Integer> tile : worldDB.getImportantBlocks(x, y, z)) {
+            for (List<Integer> tile : marker.db.getImportantBlocks(x, y, z)) {
                 TileEntity te = world.getBlockTileEntity(tile.get(0), tile.get(1), tile.get(2));
 
                 if (te instanceof IInventory) {
@@ -216,7 +221,7 @@ public class WustendorfMarker extends Block {
         }
 
         if (food >= 0) {
-            worldDB.setTag(food, "food_level", x, y, z);
+            marker.setTag("food_level", food);
         } else {
             popFlag(world, x, y, z);
         }
