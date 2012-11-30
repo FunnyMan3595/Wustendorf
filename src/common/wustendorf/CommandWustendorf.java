@@ -48,7 +48,7 @@ public class CommandWustendorf extends CommandBase {
             } else if (params[1].equals("tag")) {
                 sender.sendChatToPlayer("Usage:");
                 sender.sendChatToPlayer("/w tag {|list} - List tags on target flag.");
-                sender.sendChatToPlayer("/w tag <tag> <level> - Set tag on target flag.");
+                sender.sendChatToPlayer("/w tag <tag> [level] - Read or set tag on target flag.");
                 sender.sendChatToPlayer("/w tag clear <tag> - Remove tag from target flag.");
             } else if (params[1].equals("range")) {
                 sender.sendChatToPlayer("Usage:");
@@ -119,8 +119,12 @@ public class CommandWustendorf extends CommandBase {
                 if (params.length == 3) {
                     String tag = params[2];
 
-                    marker.removeTag(tag);
-                    sender.sendChatToPlayer("Removed tag " + tag + ".");
+                    if (tag.equals("range")) {
+                        sender.sendChatToPlayer("Can't remove range.");
+                    } else {
+                        marker.removeTag(tag);
+                        sender.sendChatToPlayer("Removed tag " + tag + ".");
+                    }
                     return;
                 }
 
@@ -130,12 +134,28 @@ public class CommandWustendorf extends CommandBase {
                 int value = -1;
                 String tag = null;
 
-                if (params.length == 3) {
+                if (params.length == 2) {
+                    tag = params[1];
+
+                    Integer savedValue = marker.getTag(tag, false);
+
+                    if (savedValue == null) {
+                        sender.sendChatToPlayer("Tag " + tag + " is not set.");
+                    } else {
+                        sender.sendChatToPlayer("Tag " + tag + " has value " + savedValue + ".");
+                    }
+
+                    return;
+                } else if (params.length == 3) {
                     tag = params[1];
 
                     if (params[2].equals("-")) {
-                        marker.removeTag(tag);
-                        sender.sendChatToPlayer("Removed tag " + tag + ".");
+                        if (tag.equals("range")) {
+                            sender.sendChatToPlayer("Can't remove range.");
+                        } else {
+                            marker.removeTag(tag);
+                            sender.sendChatToPlayer("Removed tag " + tag + ".");
+                        }
                         return;
                     } else {
                         try {
@@ -146,12 +166,13 @@ public class CommandWustendorf extends CommandBase {
                 }
 
                 if (!okay) {
-                    sender.sendChatToPlayer("Usage: /w tag <tag> <level>");
+                    sender.sendChatToPlayer("Usage: /w tag <tag> [level]");
                     return;
                 }
 
                 marker.setTag(tag, value);
-                if (marker.getTag(tag, false) != value) {
+                Integer savedValue = marker.getTag(tag, false);
+                if (savedValue == null || savedValue != value) {
                     sender.sendChatToPlayer("Failed to set tag.");
                 } else {
                     sender.sendChatToPlayer("Set tag " + tag + " to " + value + ".");

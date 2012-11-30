@@ -160,23 +160,23 @@ public class WustendorfMarker extends Block {
         // Pre-fill the marker's tag cache, to avoid extra DB calls.
         marker.getAllTags();
 
-        int food = marker.getTag("food_level");
+        Integer food = marker.getTag("food_level");
 
-        if (food < 0) {
+        if (food == null || food < 0) {
             food = 0;
         }
 
-        int food_use = marker.getTag("food_use");
+        Integer food_use = marker.getTag("food_use");
 
-        if (food_use <= 0) {
+        if (food_use == null || food_use <= 0) {
             return;
         }
 
         food -= food_use;
 
         if (food < 0) {
-            int food_multiplier = marker.getTag("food_multiplier");
-            if (food_multiplier <= 0) {
+            Integer food_multiplier = marker.getTag("food_multiplier");
+            if (food_multiplier == null || food_multiplier <= 0) {
                 food_multiplier = 6;
             }
 

@@ -172,7 +172,7 @@ public class WustendorfDB {
     }
 
     public List<DBMarker> getMarkersInPhase(int phase) {
-        List<List<Integer>> info = getIntMatrix(5, "SELECT marker_id, marker_x, marker_y, marker_z, marker_range FROM Markers WHERE (marker_id % 100)=?;", phase);
+        List<List<Integer>> info = getIntMatrix(5, "SELECT marker_id, marker_x, marker_y, marker_z, range FROM Markers WHERE (marker_id % 100)=?;", phase);
 
         if (info == null) {
             return null;
@@ -259,7 +259,7 @@ public class WustendorfDB {
     }
 
     public DBMarker getMarker(int index) {
-        int[] info = getIntArray(5, "SELECT marker_id, marker_x, marker_y, marker_z, marker_range FROM Markers LIMIT 1 OFFSET ?;", index);
+        int[] info = getIntArray(5, "SELECT marker_id, marker_x, marker_y, marker_z, range FROM Markers LIMIT 1 OFFSET ?;", index);
         if (info.length == 5) {
             DBMarker marker = new DBMarker(this, info[1], info[2], info[3]);
             marker.id = info[0];
@@ -271,16 +271,16 @@ public class WustendorfDB {
         }
     }
 
-    public int getTag(int marker, String tag) {
-        return getInt("SELECT value FROM Tags NATURAL JOIN Markers WHERE marker_id=? AND tag_name=?;", marker, tag);
+    public Integer getTag(int marker, String tag) {
+        return getInt("SELECT value FROM Tags WHERE marker_id=? AND tag_name=?;", marker, tag);
     }
 
     public Map<String, Integer> getAllTags(int marker) {
-        return getIntMap("SELECT tag_name, value FROM Tags NATURAL JOIN Markers WHERE marker_id=?;", marker);
+        return getIntMap("SELECT tag_name, value FROM Tags WHERE marker_id=?;", marker);
     }
 
     public Map<String, Integer> getMatchingTags(int marker, String match) {
-        return getIntMap("SELECT tag_name, value FROM Tags NATURAL JOIN Markers WHERE marker_id=? AND tag_name LIKE ?;", marker, match);
+        return getIntMap("SELECT tag_name, value FROM Tags WHERE marker_id=? AND tag_name LIKE ?;", marker, match);
     }
 
     public List<List<Integer>> getImportantBlocks(int x, int y, int z) {
@@ -307,7 +307,7 @@ public class WustendorfDB {
         return markers;
     }
 
-    public int getBestInRange(String tag, int x, int z) {
+    public Integer getBestInRange(String tag, int x, int z) {
         return getInt("SELECT MAX(value) FROM Tags NATURAL JOIN Markers WHERE tag_name=? AND ABS(marker_x-?)<=range AND ABS(marker_z-?)<=range;", tag, x, z);
     }
 

@@ -73,7 +73,7 @@ public class DBMarker {
         }
 
         // Forward the pseudo-tag "range" to its actual value.
-        if (name == "range") {
+        if (name.equals("range")) {
             return getRange(cached);
         }
 
@@ -87,7 +87,7 @@ public class DBMarker {
         }
 
         // Get the current value from the database.
-        value = db.getTag(getID(), name);
+        value = db.getTag(id, name);
 
         // Cache the value.
         tags.put(name, value);
@@ -110,7 +110,7 @@ public class DBMarker {
         }
 
         // Get the current value from the database.
-        range = db.getRange(getID());
+        range = db.getRange(id);
 
         return range;
     }

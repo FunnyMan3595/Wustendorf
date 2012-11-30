@@ -40,6 +40,7 @@ import net.minecraft.src.EntityMob;
 import net.minecraft.src.EntityPlayer;
 import net.minecraft.src.EntityPlayerMP;
 import net.minecraft.src.EntitySlime;
+import net.minecraft.src.EnumGameType;
 import net.minecraft.src.EnumSkyBlock;
 import net.minecraft.src.INetworkManager;
 import net.minecraft.src.Item;
@@ -229,7 +230,13 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
     public static int getRegionSafety(WorldServer world, int x, int z) {
         WustendorfDB worldDB = getWorldDB(world);
 
-        return worldDB.getBestInRange("protect", x, z);
+        Integer safety = worldDB.getBestInRange("protect", x, z);
+
+        if (safety == null) {
+            return 0;
+        }
+
+        return safety;
     }
 
     public static int overrideLightDisplay(World world, int x, int y, int z) {
@@ -389,6 +396,22 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         }
     }
 
+    public void setFlight(EntityPlayer player, boolean flight) {
+        setFlight(player, flight, false);
+    }
+
+    public void setFlight(EntityPlayer player, boolean flight, boolean force) {
+        if (!flight && (force || player.capabilities.allowFlying)
+                    && !player.capabilities.isCreativeMode) {
+            player.fallDistance = 0.0F;
+            player.capabilities.allowFlying = false;
+            player.sendPlayerAbilities();
+        } else if (flight && (force || !player.capabilities.allowFlying)) {
+            player.capabilities.allowFlying = true;
+            player.sendPlayerAbilities();
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public void tickStart(EnumSet<TickType> type, Object... tickData) {
         if (!(tickData[0] instanceof WorldServer)) {
@@ -411,12 +434,7 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
 
             // And that nobody's using the flight from a marker that's gone.
             for (EntityPlayer player : (List<EntityPlayer>) world.playerEntities) {
-                if (    player.capabilities.allowFlying
-                    && !player.capabilities.isCreativeMode) {
-                    player.capabilities.allowFlying = false;
-                    player.capabilities.isFlying = false;
-                    player.sendPlayerAbilities();
-                }
+                setFlight(player, false);
             }
             return;
         }
@@ -452,26 +470,14 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         for (EntityPlayer player : (List<EntityPlayer>) world.playerEntities) {
             int x = MathHelper.floor_double(player.posX);
             int z = MathHelper.floor_double(player.posZ);
-            int flight = worldDB.getBestInRange("flight", x, z);
+            Integer flight = worldDB.getBestInRange("flight", x, z);
 
-            boolean flight_changed = false;
-            if (flight <= 0) {
-                // Ensure they can't use Wustendorf flight.
-                if (    player.capabilities.allowFlying
-                    && !player.capabilities.isCreativeMode) {
-                    player.capabilities.allowFlying = false;
-                    player.capabilities.isFlying = false;
-                    flight_changed = true;
-                }
-            } else {
-                // Ensure they can use Wustendorf flight.
-                if (!player.capabilities.allowFlying) {
-                    player.capabilities.allowFlying = true;
-                    flight_changed = true;
-                }
-            }
+            // Ensure their flying is correctly on/off.
+            setFlight(player, (flight != null && flight > 0));
 
-            if (flight_changed || phase == player_phase) {
+            // And re-send their capabilities occasionally, because some mods
+            // (*cough* Mystcraft *cough*) screw it up client-side.
+            if (phase == player_phase) {
                 player.sendPlayerAbilities();
             }
 
@@ -498,6 +504,8 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         for (int dimension : serverLightCache.keySet()) {
             PacketDispatcher.sendPacketToPlayer(buildLightCachePacket(dimension), (Player) player);
         }
+
+        setFlight(player, false, true);
     }
 
     public void onPlayerLogout(EntityPlayer player) {}
