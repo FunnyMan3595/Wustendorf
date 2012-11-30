@@ -39,16 +39,11 @@ public class WustendorfDB {
         }
     }
 
-    protected PreparedStatement getCachedStatement(String query) {
+    protected PreparedStatement getCachedStatement(String query) throws SQLException {
         PreparedStatement stmt = statementCache.get(query);
         if (stmt == null) {
-            try {
-                stmt = conn.prepareStatement(query);
-                statementCache.put(query, stmt);
-            } catch (Exception e) {
-                System.out.println("Wustendorf: Database error:");
-                e.printStackTrace();
-            }
+            stmt = conn.prepareStatement(query);
+            statementCache.put(query, stmt);
         }
 
         return stmt;
@@ -293,7 +288,7 @@ public class WustendorfDB {
     }
 
     public List<DBMarker> getMarkersWithTag(String tag) {
-        List<List<Integer>> info = getIntMatrix(6, "SELECT marker_id, marker_x, marker_y, marker_z, range, value FROM Tags NATURAL JOIN Markers WHERE tag_name=?;", tag);
+        List<List<Integer>> info = getIntMatrix(6, "SELECT Markers.marker_id, marker_x, marker_y, marker_z, range, value FROM Tags NATURAL JOIN Markers WHERE tag_name=?;", tag);
 
         if (info == null) {
             return null;
