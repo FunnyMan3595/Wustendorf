@@ -404,6 +404,7 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         if (!flight && (force || player.capabilities.allowFlying)
                     && !player.capabilities.isCreativeMode) {
             player.fallDistance = 0.0F;
+            player.capabilities.isFlying = false;
             player.capabilities.allowFlying = false;
             player.sendPlayerAbilities();
         } else if (flight && (force || !player.capabilities.allowFlying)) {
@@ -504,8 +505,6 @@ public class Wustendorf implements ITickHandler, IPlayerTracker {
         for (int dimension : serverLightCache.keySet()) {
             PacketDispatcher.sendPacketToPlayer(buildLightCachePacket(dimension), (Player) player);
         }
-
-        setFlight(player, false, true);
     }
 
     public void onPlayerLogout(EntityPlayer player) {}
